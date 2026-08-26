@@ -2,6 +2,27 @@
 
 Replace every angle-bracket placeholder with a value discovered from the target servers. These are patterns, not permission to run commands or bypass approval requirements.
 
+## Controller SSH setup
+
+Keep control sockets in a private controller-side temporary directory, never inside a website tree:
+
+```sh
+SSH_CONTROL_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cloudpanel-migrate-ssh.XXXXXX")
+chmod 700 "$SSH_CONTROL_DIR"
+SSH_CONTROL_PATH="$SSH_CONTROL_DIR/cm-%C"
+```
+
+Use the configured host aliases and retain normal host-key verification:
+
+```sh
+ssh -MNf -o ControlMaster=yes -o ControlPersist=15m -o ControlPath="$SSH_CONTROL_PATH" -o ServerAliveInterval=30 -o ServerAliveCountMax=3 <old-host>
+ssh -MNf -o ControlMaster=yes -o ControlPersist=15m -o ControlPath="$SSH_CONTROL_PATH" -o ServerAliveInterval=30 -o ServerAliveCountMax=3 <new-host>
+ssh -o ControlPath="$SSH_CONTROL_PATH" -O check <old-host>
+ssh -o ControlPath="$SSH_CONTROL_PATH" -O check <new-host>
+```
+
+Run actual work in the foreground with explicit server labels. When prefixing or logging pipeline output, use `set -o pipefail` so a failed SSH command is not masked by `sed` or `tee`.
+
 ## Source discovery
 
 ```sh
@@ -54,6 +75,8 @@ From a workstation with both SSH aliases configured:
 scp -3 <old-host>:/root/migration-backups/<domain>/<domain>-files.tar.gz <old-host>:/root/migration-backups/<domain>/<domain>-database.sql.gz <new-host>:/root/migration-backups/<domain>/
 ```
 
+If foreground `scp` is too slow and inspection proves parallel split transfer is safe, create root-only contiguous parts, transfer each visibly, reassemble in numeric order, and require the reassembled SHA-256 to match the original before extraction. Inventory and delete every split part during authorized cleanup.
+
 On the new server:
 
 ```sh
@@ -101,4 +124,12 @@ Verify cleanup:
 ```sh
 find /root/migration-backups/<domain> -maxdepth 1 -type f -printf '%p\n'
 test ! -e /root/<domain>-migration-credentials.txt
+```
+
+Close the exact controller-created SSH masters after completion:
+
+```sh
+ssh -o ControlPath="$SSH_CONTROL_PATH" -O exit <old-host>
+ssh -o ControlPath="$SSH_CONTROL_PATH" -O exit <new-host>
+rm -r -- "$SSH_CONTROL_DIR"
 ```
