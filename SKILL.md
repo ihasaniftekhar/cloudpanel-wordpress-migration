@@ -7,6 +7,15 @@ description: Safely migrate WordPress sites between CloudPanel servers over SSH,
 
 Migrate one WordPress domain at a time from an old CloudPanel server to a new CloudPanel server. Preserve the live source site, keep public DNS unchanged until the user approves cutover, and make every consequential step observable and reversible until final verification.
 
+## Execution modes
+
+Select the controller mode before connecting:
+
+- In Codex Desktop, read [references/codex-desktop.md](references/codex-desktop.md). Use visible persistent terminal sessions and keep long-running commands attached so the user can follow commands and output in the app.
+- In Codex CLI, read [references/codex-cli.md](references/codex-cli.md). Use controller-side SSH multiplexing and explicit foreground remote commands.
+
+The shared safety, migration, verification, comparison, and cleanup requirements in this file apply to both modes.
+
 ## Operating contract
 
 - Treat the old server as the current production source.
