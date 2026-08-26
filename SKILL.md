@@ -13,12 +13,45 @@ Migrate one WordPress domain at a time from an old CloudPanel server to a new Cl
 - Never delete or modify live source website files or its live database.
 - Do not change DNS or install a public certificate unless the user separately requests it.
 - Inspect before changing. Resolve the exact domain, site user, document root, PHP version, database name, sizes, and destination conflicts from the servers rather than assuming them.
-- Run commands one at a time in a persistent interactive SSH session when the environment supports it. Show the exact command before execution and expose its output immediately. Do not place secrets in commands, output, or chat.
+- Keep one reusable SSH connection to each server. Prefer OpenSSH multiplexing and explicit foreground remote commands over long-lived interactive shells when the execution environment supports them. Show sanitized commands before execution and expose output immediately. Do not place secrets in commands, output, logs, or chat.
 - Use generated shell variables for passwords. Store a root-only temporary credential file only when operationally necessary; remove it after successful restoration and verification when the user has requested ephemeral credentials.
 - Create temporary archives outside `htdocs`. Restrict them to root-only access.
 - Preserve CloudPanel placeholder files by renaming them. Never delete or silently overwrite them.
 - Use exact paths for cleanup. Do not use broad globs, unresolved variables, recursive deletion, or inferred targets.
 - If a check fails, stop before cleanup. Keep all temporary artifacts needed for diagnosis or rollback and report the failure.
+
+## Live dual-SSH execution
+
+The controller running the agent coordinates both servers. Do not require either server to SSH into the other.
+
+When supported, create a private temporary SSH control directory with `mktemp -d`, mode `0700`, and a `ControlPath` inside it. Establish one master connection per configured host alias using settings equivalent to:
+
+```text
+ControlMaster=auto
+ControlPersist=15m
+ServerAliveInterval=30
+ServerAliveCountMax=3
+ConnectTimeout=15
+```
+
+Never disable host-key verification. An unexpected or changed host key is a hard stop. Confirm both master connections before making migration changes. Close them and remove only the exact temporary control directory after the migration is complete.
+
+Run migration work as explicit foreground commands:
+
+```sh
+ssh [SSH_OPTIONS] "$SOURCE_HOST" 'command'
+ssh [SSH_OPTIONS] "$DEST_HOST" 'command'
+```
+
+The SSH masters may persist in the background, but archive creation, transfer, restore, and verification must remain attached to the foreground terminal. Do not use `nohup`, `disown`, `setsid`, or background a primary migration command merely to continue reasoning.
+
+Before each consequential command, print a sanitized stage label such as `[SOURCE]`, `[DEST]`, `[TRANSFER]`, or `[VERIFY]`. Clearly identify which server produced each output. If output is prefixed through `sed` or recorded with `tee`, enable pipeline behavior equivalent to `set -o pipefail` and preserve the SSH command's real exit status.
+
+Keep a mode-`0600` local event log when practical, but never let logging hide live output. Never record passwords, tokens, private keys, or secret environment variables. Do not enable shell tracing while secrets exist.
+
+Parallelize only independent read-only discovery. Keep dependent operations ordered: package, validate, transfer, destination checksum, extract, import, verify. Never restore a partially transferred or unvalidated artifact.
+
+Use real foreground progress from `scp`, `pv`, or the execution environment when available. Do not invent percentages. For a quiet long-running command, announce what is running and report its completion or failure. If a single transfer is unacceptably slow, inspect connectivity and storage before changing strategy; any split-part transfer must be checksum-validated after reassembly and all parts must be included in the exact cleanup inventory.
 
 ## Workflow
 
