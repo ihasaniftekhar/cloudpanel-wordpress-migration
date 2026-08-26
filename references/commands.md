@@ -104,6 +104,30 @@ tail -n 30 /home/<site-user>/logs/nginx/error.log /home/<site-user>/logs/php/err
 nginx -t
 ```
 
+## Fresh live source-to-destination comparison
+
+Run these after destination verification and before cleanup. Generate comparable manifests from each document root. Exclude only the active `wp-config.php` and the explicitly preserved destination placeholder; report those exclusions.
+
+```sh
+cd /home/<site-user>/htdocs/<domain>
+find . -xdev -type f ! -name wp-config.php ! -name 'index.php.cloudpanel-placeholder-*' -printf '%P\0' | sort -z | xargs -0 -r sha256sum
+find . -xdev -type l -printf '%P -> %l\n' | sort
+find . -xdev -type f -printf '%s\n' | awk '{count++; bytes += $1} END {printf "files=%d bytes=%.0f\n", count, bytes}'
+```
+
+Compare the source and destination manifest outputs on the controller without modifying either server. Absolute paths must not enter the manifests because document roots differ.
+
+For a logical database comparison, capture table names and row counts, then create near-simultaneous normalized exports:
+
+```sh
+sudo -u <site-user> wp db tables --all-tables-with-prefix --path=/home/<site-user>/htdocs/<domain>
+sudo -u <site-user> wp db query "SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME" --skip-column-names --path=/home/<site-user>/htdocs/<domain>
+sudo -u <site-user> wp db export - --skip-comments --path=/home/<site-user>/htdocs/<domain> | sha256sum
+sudo -u <site-user> wp db size --size_format=b --path=/home/<site-user>/htdocs/<domain>
+```
+
+Treat `TABLE_ROWS` as approximate for InnoDB. A normalized export hash or equivalent logical comparison carries more weight. If a live site changes between the two captures, report drift and do not force equality or clean up rollback artifacts until the user decides how to proceed.
+
 ## Exact cleanup after successful verification
 
 First list files on each server:

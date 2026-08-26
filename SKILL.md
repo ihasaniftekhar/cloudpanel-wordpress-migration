@@ -133,9 +133,33 @@ All applicable checks must pass:
 
 Do not claim public DNS, mail, cron, external APIs, checkout, or authenticated application flows are verified unless they were actually tested.
 
-### 7. Clean up temporary artifacts
+### 7. Compare the live source with the restored destination
 
-Only after every required verification succeeds, and only when the user authorized cleanup:
+After restoration and destination verification succeed, but before cleanup, perform a fresh read-only comparison between the still-live source and the new site.
+
+For website files, compare:
+
+- filesystem entry and regular-file counts
+- total logical regular-file bytes
+- relative paths, file sizes, and SHA-256 hashes for regular files
+- relative symlink paths and targets when symlinks exist
+
+Exclude only explicitly expected destination differences from content parity, normally the preserved CloudPanel placeholder and `wp-config.php` database credentials. Record every exclusion. Do not exclude caches, logs, uploads, or other changing paths merely to force a match.
+
+For the database, compare:
+
+- table-name sets
+- per-table row counts
+- normalized logical exports or equivalent content checksums produced at approximately the same time
+- reported database sizes as context, not proof of equality, because InnoDB allocation commonly changes after import
+
+The source is live and can change during or after packaging. If fresh comparison differs, show the exact differing paths/tables when practical and distinguish post-snapshot live drift from transfer corruption. Matching archive SHA-256 proves the migration snapshot transferred intact; it does not prove the current live source is still identical.
+
+Do not automatically synchronize, overwrite, delete, or re-import differences. Do not claim current live parity unless the fresh comparison passes. Preserve temporary migration artifacts and ask for direction when an unexplained or material difference remains.
+
+### 8. Clean up temporary artifacts
+
+Only after every required verification and live comparison succeeds, and only when the user authorized cleanup:
 
 1. List exact temporary files on both servers.
 2. Delete the exact file and database archives from the old server.
@@ -151,4 +175,4 @@ Read [references/commands.md](references/commands.md) when executing a migration
 
 ## Completion report
 
-Report the domain, site user, PHP and WordPress versions, source sizes, checksum result, database result, local HTTP result, log result, DNS status, and exactly which temporary artifacts were deleted. State explicitly that the old live site and database were untouched.
+Report the domain, site user, PHP and WordPress versions, source sizes, archive checksum result, destination database result, fresh live file comparison, fresh live database comparison, exclusions or drift, local HTTP result, log result, DNS status, and exactly which temporary artifacts were deleted. State explicitly that the old live site and database were untouched.
